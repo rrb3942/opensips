@@ -1467,7 +1467,7 @@ int compare_uris(str *raw_uri_a,struct sip_uri* parsed_uri_a,
 
 	if (unescape_user(&first.user, &unescaped_userA) < 0 ||
 			unescape_user(&second.user, &unescaped_userB) < 0) {
-		LM_ERR("Failed to unescape user!\n");
+		//LM_ERR("Failed to unescape user!\n");
 		return -1;
 	}
 
