@@ -853,11 +853,11 @@ static int mod_init(void)
 	}
 
 	/* register timer to flush the state of destination back to DB */
-	if (ds_persistent_state && register_timer("ds-flusher", ds_flusher_routine,
-			NULL, 30 , TIMER_FLAG_SKIP_ON_DELAY)<0) {
-		LM_ERR("failed to register timer for DB flushing!\n");
-		return -1;
-	}
+	//if (ds_persistent_state && register_timer("ds-flusher", ds_flusher_routine,
+	//		NULL, 30 , TIMER_FLAG_SKIP_ON_DELAY)<0) {
+	//	LM_ERR("failed to register timer for DB flushing!\n");
+	//	return -1;
+	//}
 
 	dispatch_evi_id = evi_publish_event(dispatcher_event);
 	if (dispatch_evi_id == EVI_ERROR)
