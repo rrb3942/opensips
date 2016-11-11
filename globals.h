@@ -142,4 +142,8 @@ extern int disable_503_translation;
 
 extern int enable_asserts;
 extern int abort_on_assert;
+
+/* States for worker children. 0 Idle, 1 Busy */
+extern int *worker_states;
+
 #endif

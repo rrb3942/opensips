@@ -82,10 +82,12 @@ struct os_timer{
 	struct os_timer* next;
 };
 
+/* Pipes for communicating with worker children */
+extern int *timer_fds_out;
+/* Global timer pipe for all children to listen on */
+extern int timer_global_out;
 
-extern int timer_fd_out;
-
-int init_timer(void);
+int init_timer(int chld_cnt);
 
 void destroy_timer(void);
 
@@ -111,6 +113,6 @@ int start_timer_extra_processes(int *chd_rank);
 
 int register_route_timers(void);
 
-void handle_timer_job(void);
+void handle_timer_job(int timer_pipe);
 
 #endif

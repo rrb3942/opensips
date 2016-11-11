@@ -1532,7 +1532,7 @@ static void tcp_main_server(void)
 
 	/* main loop (requires "handle_io()" implementation) */
 	reactor_main_loop( TCP_MAIN_SELECT_TIMEOUT, error,
-			tcpconn_lifetime(last_sec, 0) );
+			tcpconn_lifetime(last_sec, 0), NULL );
 
 error:
 	destroy_worker_reactor();
@@ -1688,7 +1688,7 @@ int tcp_count_processes(void)
 
 int tcp_start_processes(int *chd_rank, int *startup_done)
 {
-	int r, n;
+	int r, n, chld_id;
 	int reader_fd[2]; /* for comm. with the tcp children read  */
 	pid_t pid;
 	struct socket_info *si;
@@ -1717,6 +1717,10 @@ int tcp_start_processes(int *chd_rank, int *startup_done)
 			LM_ERR("socketpair failed: %s\n", strerror(errno));
 			goto error;
 		}
+
+		//Timer pipe id for this child to listen on
+		//This will cause it to wrap in the event of more children than pipes
+		chld_id = (*chd_rank);
 
 		(*chd_rank)++;
 		pid=internal_fork("SIP receiver TCP");
@@ -1758,7 +1762,7 @@ int tcp_start_processes(int *chd_rank, int *startup_done)
 
 			report_conditional_status( 1, 0);
 
-			tcp_worker_proc( reader_fd[1] );
+			tcp_worker_proc( reader_fd[1], chld_id );
 			exit(-1);
 		}
 	}

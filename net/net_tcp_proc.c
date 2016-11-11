@@ -114,7 +114,7 @@ inline static int handle_io(struct fd_map* fm, int idx,int event_type)
 
 	switch(fm->type){
 		case F_TIMER_JOB:
-			handle_timer_job();
+			handle_timer_job(fm->fd);
 			break;
 		case F_SCRIPT_ASYNC:
 			async_script_resume_f( &fm->fd, fm->data);
@@ -291,7 +291,7 @@ static inline void tcp_receive_timeout(void)
 
 
 
-void tcp_worker_proc( int unix_sock)
+void tcp_worker_proc( int unix_sock, int chld_id)
 {
 	/* init reactor for TCP worker */
 	tcpmain_sock=unix_sock; /* init com. socket */
@@ -299,8 +299,14 @@ void tcp_worker_proc( int unix_sock)
 		goto error;
 	}
 
+	/* Listen on global timer pipe */
+	if (reactor_add_reader( timer_global_out, F_TIMER_JOB, RCT_PRIO_TIMER,NULL)<0){
+		LM_CRIT("failed to add timer timer_global_out to reactor\n");
+		goto error;
+	}
+
 	/* start watching for the timer jobs */
-	if (reactor_add_reader( timer_fd_out, F_TIMER_JOB, RCT_PRIO_TIMER,NULL)<0){
+	if (reactor_add_reader( timer_fds_out[chld_id], F_TIMER_JOB, RCT_PRIO_TIMER,NULL)<0){
 		LM_CRIT("failed to add timer pipe_out to reactor\n");
 		goto error;
 	}
@@ -312,7 +318,7 @@ void tcp_worker_proc( int unix_sock)
 	}
 
 	/* main loop */
-	reactor_main_loop( TCP_CHILD_SELECT_TIMEOUT, error, tcp_receive_timeout());
+	reactor_main_loop( TCP_CHILD_SELECT_TIMEOUT, error, tcp_receive_timeout(), &worker_states[chld_id]);
 
 error:
 	destroy_worker_reactor();

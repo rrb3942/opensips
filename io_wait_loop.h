@@ -57,7 +57,9 @@ static int handle_io(struct fd_map* fm, int idx,int event_type) {
 }
 #endif
 
-
+/*Sets worker state as busy or idle*/
+#define worker_idle(worker_state_var) if (worker_state_var != NULL) __atomic_store_n(worker_state_var, 0, __ATOMIC_RELEASE);
+#define worker_busy(worker_state_var) if (worker_state_var != NULL) __atomic_store_n(worker_state_var, 1, __ATOMIC_RELEASE);
 
 /*! \brief io_wait_loop_x style function
  * wait for io using poll()
@@ -66,12 +68,14 @@ static int handle_io(struct fd_map* fm, int idx,int event_type) {
  * \param repeat if !=0 handle_io will be called until it returns <=0
  * \return number of IO events handled on success (can be 0), -1 on error
  */
-inline static int io_wait_loop_poll(io_wait_h* h, int t, int repeat)
+inline static int io_wait_loop_poll(io_wait_h* h, int t, int repeat, int *worker_state_var)
 {
 	int n, r;
 	int ret;
 again:
+		worker_idle(worker_state_var);
 		ret=n=poll(h->fd_array, h->fd_no, t*1000);
+		worker_busy(worker_state_var);
 		if (n==-1){
 			if (errno==EINTR) goto again; /* signal, ignore it */
 			else{
@@ -116,7 +120,7 @@ error:
 
 #ifdef HAVE_SELECT
 /*! \brief wait for io using select */
-inline static int io_wait_loop_select(io_wait_h* h, int t, int repeat)
+inline static int io_wait_loop_select(io_wait_h* h, int t, int repeat, int *worker_state_var)
 {
 	fd_set sel_set;
 	int n, ret;
@@ -127,7 +131,9 @@ again:
 		sel_set=h->master_set;
 		timeout.tv_sec=t;
 		timeout.tv_usec=0;
+		worker_idle(worker_state_var);
 		ret=n=select(h->max_fd_select+1, &sel_set, 0, 0, &timeout);
+		worker_busy(worker_state_var);
 		if (n<0){
 			if (errno==EINTR) goto again; /* just a signal */
 			LM_ERR("[%s] select: %s [%d]\n",h->name, strerror(errno), errno);
@@ -149,13 +155,15 @@ again:
 
 
 #ifdef HAVE_EPOLL
-inline static int io_wait_loop_epoll(io_wait_h* h, int t, int repeat)
+inline static int io_wait_loop_epoll(io_wait_h* h, int t, int repeat, int *worker_state_var)
 {
 	int ret, n, r;
 	struct fd_map *e;
 
 again:
+		worker_idle(worker_state_var);
 		ret=n=epoll_wait(h->epfd, h->ep_array, h->fd_no, t*1000);
+		worker_busy(worker_state_var);
 		if (n==-1){
 			if (errno==EINTR) goto again; /* signal, ignore it */
 			else{
@@ -235,7 +243,7 @@ error:
 
 
 #ifdef HAVE_KQUEUE
-inline static int io_wait_loop_kqueue(io_wait_h* h, int t, int repeat)
+inline static int io_wait_loop_kqueue(io_wait_h* h, int t, int repeat, int *worker_state_var)
 {
 	int ret, n, r;
 	struct timespec tspec;
@@ -244,8 +252,11 @@ inline static int io_wait_loop_kqueue(io_wait_h* h, int t, int repeat)
 	tspec.tv_sec=t;
 	tspec.tv_nsec=0;
 again:
+		worker_idle(worker_state_var);
 		ret=n=kevent(h->kq_fd, h->kq_changes, h->kq_nchanges,  h->kq_array,
 					h->fd_no, &tspec);
+		worker_busy(worker_state_var);
+
 		if (n==-1){
 			if (errno==EINTR) goto again; /* signal, ignore it */
 			else{
@@ -292,7 +303,7 @@ error:
 
 #ifdef HAVE_SIGIO_RT
 /*! \brief sigio rt version has no repeat (it doesn't make sense)*/
-inline static int io_wait_loop_sigio_rt(io_wait_h* h, int t)
+inline static int io_wait_loop_sigio_rt(io_wait_h* h, int t, int *worker_state_var)
 {
 	int n;
 	int ret;
@@ -312,7 +323,9 @@ inline static int io_wait_loop_sigio_rt(io_wait_h* h, int t)
 	}
 
 again:
+	worker_idle(worker_state_var);
 	n=sigtimedwait(&h->sset, &siginfo, &ts);
+	worker_busy(worker_state_var);
 	if (n==-1){
 		if (errno==EINTR) goto again; /* some other signal, ignore it */
 		else if (errno==EAGAIN){ /* timeout */
@@ -392,7 +405,7 @@ again:
 			LM_CRIT("[%s] couldn't reset signal to DFL\n",h->name);
 		}
 		/* falling back to normal poll */
-		ret=io_wait_loop_poll(h, -1, 1);
+		ret=io_wait_loop_poll(h, -1, 1, worker_state_var);
 	}
 end:
 	return ret;
@@ -404,7 +417,7 @@ error:
 
 
 #ifdef HAVE_DEVPOLL
-inline static int io_wait_loop_devpoll(io_wait_h* h, int t, int repeat)
+inline static int io_wait_loop_devpoll(io_wait_h* h, int t, int repeat, int *worker_state_var)
 {
 	int n, r;
 	int ret;
@@ -415,7 +428,9 @@ inline static int io_wait_loop_devpoll(io_wait_h* h, int t, int repeat)
 		dpoll.dp_nfds=h->fd_no;
 		dpoll.dp_fds=h->dp_changes;
 again:
+		worker_idle(worker_state_var);
 		ret=n=ioctl(h->dpoll_fd, DP_POLL, &dpoll);
+		worker_busy(worker_state_var);
 		if (n==-1){
 			if (errno==EINTR) goto again; /* signal, ignore it */
 			else{
